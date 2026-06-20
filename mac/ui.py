@@ -1,14 +1,17 @@
 """
-macOS / PC 版本的 Pygame 渲染层（v0.3.0 iOS 风格重设计）
+macOS / PC 版本的 Pygame 渲染层（v0.4.0 侵权合规修复）
 
-设计参考 Apple Human Interface Guidelines：
+设计参考：
+- Apple Human Interface Guidelines 设计理念（无版权代码）
 - 8pt 栅格
-- SF Pro / 苹方字体分级
+- 系统级字号分级
 - 圆角卡片 + 半透明背景
-- 系统色板
-- 底部 sheet 式弹窗
+- 胶囊按钮
 
-集成排行榜 + 中文输入支持。
+App Store 合规：
+- 使用自绘图形替代 emoji
+- 使用开源中文字体（Noto Sans CJK / 思源黑体）
+- 所有图形均为原创，无第三方图标资源依赖
 """
 from __future__ import annotations
 
@@ -33,10 +36,36 @@ from core.leaderboard import Leaderboard
 FPS = 60
 WINDOW_TITLE = "是男人就100"
 
-# 中文字体
-CHINESE_FONT = "/System/Library/Fonts/Hiragino Sans GB.ttc"
+# 中文字体（多级 fallback）
+# 优先级：开源免费字体 → macOS 系统字体（仅本地调试用，不打包到 App Store）
+# 上架 App Store 时建议使用开源字体（如思源黑体 Noto Sans CJK）
+PREFERRED_FONTS = [
+    # 1. 开源免费字体（推荐，App Store 友好）
+    "/Library/Fonts/NotoSansCJK-Regular.ttc",      # Noto Sans CJK（开源）
+    "/usr/local/share/fonts/SourceHanSansCN-Regular.otf",  # 思源黑体（开源）
+    "/opt/homebrew/share/fonts/SourceHanSansCN-Regular.otf",
+    # 2. 系统自带（仅本地开发用，注意：苹方在 App Store 应用中有版权问题）
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+]
 
-# iOS 系统色板
+
+def find_chinese_font() -> str:
+    """找到第一个可用的中文字体"""
+    for path in PREFERRED_FONTS:
+        if os.path.exists(path):
+            return path
+    # 没有就降级到 pygame 默认
+    return pygame.font.get_default_font()
+
+
+import os  # 在函数下方导入避免循环
+
+# 找到的字体路径（运行时决定）
+CHINESE_FONT = None  # 在 GameUI.__init__ 中通过 find_chinese_font() 设置
+
+
+# iOS 系统色板（颜色本身无版权，可自由使用）
 COLOR_BG_TOP = (28, 28, 30)         # 深灰背景（暗模式）
 COLOR_BG_BOTTOM = (0, 0, 0)
 COLOR_LABEL = (255, 255, 255)        # 主文字（白色）
@@ -82,13 +111,15 @@ class GameUI:
         self.game = Game()
         self.leaderboard = Leaderboard()
 
-        # 字体（一套字号分级，iOS 风格）
-        self.font_display = pygame.font.Font(CHINESE_FONT, FONT_DISPLAY)
-        self.font_title = pygame.font.Font(CHINESE_FONT, FONT_TITLE)
-        self.font_countdown = pygame.font.Font(CHINESE_FONT, COUNTDOWN_FONT)
-        self.font_body = pygame.font.Font(CHINESE_FONT, FONT_BODY)
-        self.font_callout = pygame.font.Font(CHINESE_FONT, FONT_CALLOUT)
-        self.font_caption = pygame.font.Font(CHINESE_FONT, FONT_CAPTION)
+        # 找到可用的中文字体（多级 fallback，优先开源免费字体）
+        # App Store 上架时建议把字体打包进 App，避免系统字体依赖
+        self._font_path = find_chinese_font()
+        self.font_display = pygame.font.Font(self._font_path, FONT_DISPLAY)
+        self.font_title = pygame.font.Font(self._font_path, FONT_TITLE)
+        self.font_countdown = pygame.font.Font(self._font_path, COUNTDOWN_FONT)
+        self.font_body = pygame.font.Font(self._font_path, FONT_BODY)
+        self.font_callout = pygame.font.Font(self._font_path, FONT_CALLOUT)
+        self.font_caption = pygame.font.Font(self._font_path, FONT_CAPTION)
 
         self.dragging = False
 
@@ -273,7 +304,7 @@ class GameUI:
         # 飞机
         self._draw_airplane(int(self.game.player.x), int(self.game.player.y))
 
-        # 倒计时（顶部，SF 风格大数字）
+        # 倒计时（顶部，大号数字）
         remaining = self.game.remaining_time
         text = f"{remaining:.1f}"
         surface = self.font_countdown.render(text, True, COLOR_LABEL)
@@ -286,7 +317,7 @@ class GameUI:
         self.screen.blit(unit_surface, unit_rect)
 
     def _draw_airplane(self, cx: int, cy: int) -> None:
-        """流线型飞机（SF Symbol 风格）"""
+        """流线型飞机（自绘图形，无版权问题）"""
         # 机身
         body = [
             (cx, cy - 25),  # 机头
@@ -381,33 +412,45 @@ class GameUI:
             self._draw_leaderboard_entries(card_rect)
 
     def _draw_leaderboard_entries(self, card_rect: pygame.Rect) -> None:
-        """排行榜条目"""
+        """排行榜条目（自绘奖牌图标，避免 emoji 侵权）"""
         start_y = card_rect.y + 60
         line_height = (card_rect.height - 70) // 5
 
         for idx, entry in enumerate(self.leaderboard, start=1):
             y = start_y + (idx - 1) * line_height
 
-            # 第一名金色图标
-            if idx == 1:
-                rank_label = "🥇"
-                name_color = COLOR_GOLD
-            elif idx == 2:
-                rank_label = "🥈"
-                name_color = COLOR_LABEL
-            elif idx == 3:
-                rank_label = "🥉"
-                name_color = (205, 127, 50)  # 铜色
-            else:
-                rank_label = f"{idx}."
-                name_color = COLOR_LABEL
+            # 奖牌图标（自绘）
+            medal_cx = card_rect.x + PAD_M + 14
+            medal_cy = y + 12
+            medal_radius = 14
 
-            # 排名
-            rank_surf = self.font_body.render(rank_label, True, name_color)
-            self.screen.blit(rank_surf, (card_rect.x + PAD_M, y))
+            if idx == 1:
+                medal_color = COLOR_GOLD
+            elif idx == 2:
+                medal_color = (192, 192, 192)  # 银
+            elif idx == 3:
+                medal_color = (205, 127, 50)   # 铜
+            else:
+                medal_color = COLOR_LABEL_SECONDARY
+
+            # 画奖牌圆
+            if idx <= 3:
+                pygame.draw.circle(self.screen, medal_color, (medal_cx, medal_cy), medal_radius)
+                pygame.draw.circle(self.screen, (80, 80, 80), (medal_cx, medal_cy), medal_radius, 1)
+                # 中央排名数字
+                num_surf = self.font_caption.render(str(idx), True, (50, 50, 50))
+                num_rect = num_surf.get_rect(center=(medal_cx, medal_cy))
+                self.screen.blit(num_surf, num_rect)
+            else:
+                # 普通排名：数字
+                rank_surf = self.font_body.render(f"{idx}.", True, COLOR_LABEL_SECONDARY)
+                rank_rect = rank_surf.get_rect(midleft=(card_rect.x + PAD_M, y + 6))
+                self.screen.blit(rank_surf, rank_rect)
+                continue  # 跳到下一个条目
 
             # 名字（最多 10 字符）
             name = entry["name"][:10]
+            name_color = COLOR_GOLD if idx == 1 else COLOR_LABEL
             name_surf = self.font_body.render(name, True, name_color)
             self.screen.blit(name_surf, (card_rect.x + 70, y))
 
@@ -416,7 +459,7 @@ class GameUI:
             time_rect = time_surf.get_rect(midright=(card_rect.right - PAD_M, y + 12))
             self.screen.blit(time_surf, time_rect)
 
-            # 分隔线（最后一条不画）
+            # 分隔线
             if idx < len(self.leaderboard):
                 line_y = y + line_height - 4
                 pygame.draw.line(
@@ -453,7 +496,7 @@ class GameUI:
 
         # 上榜提示
         if self.leaderboard.is_high_score(self.game.survival_time) and self._submitted_rank is None:
-            hint = self.font_body.render("🎉 新纪录！输入名字上榜", True, COLOR_GOLD)
+            hint = self.font_body.render("新纪录！输入名字上榜", True, COLOR_GOLD)
             hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, 440))
             self.screen.blit(hint, hint_rect)
             self._draw_input_field(y=470)
@@ -494,7 +537,7 @@ class GameUI:
 
         # 上榜提示
         if self._submitted_rank is None:
-            hint = self.font_body.render("🎉 输入名字上榜", True, COLOR_LABEL)
+            hint = self.font_body.render("输入名字上榜", True, COLOR_LABEL)
             hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, 440))
             self.screen.blit(hint, hint_rect)
             self._draw_input_field(y=470)
