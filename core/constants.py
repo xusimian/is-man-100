@@ -23,10 +23,11 @@ BULLET_TRAIL_COLOR = (255, 107, 107, 80)  # 半透明拖尾
 BULLET_MAX_ON_SCREEN = 100           # 同时存在最大数量
 
 # 难度参数（参考 DESIGN.md §3）
-DIFFICULTY_BASE_SPEED = 60.0    # 起始子弹速度（pt/s）
-DIFFICULTY_MAX_SPEED = 320.0    # 终局子弹速度（pt/s）
-DIFFICULTY_BASE_COUNT = 2       # 起始每秒生成数
-DIFFICULTY_MAX_COUNT = 8        # 终局每秒生成数
+# v0.2.0 调整：开局难度提高
+DIFFICULTY_BASE_SPEED = 90.0    # 起始子弹速度（pt/s），原 60
+DIFFICULTY_MAX_SPEED = 380.0    # 终局子弹速度（pt/s），原 320
+DIFFICULTY_BASE_COUNT = 4       # 起始每秒生成数，原 2
+DIFFICULTY_MAX_COUNT = 10       # 终局每秒生成数，原 8
 
 # 子弹生成角度偏移（±30 度）
 BULLET_DIRECTION_JITTER = 30  # 度

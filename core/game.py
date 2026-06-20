@@ -4,6 +4,9 @@
 包含游戏的所有逻辑：子弹生成、移动、碰撞检测、状态转换。
 不包含任何渲染代码，因此可以被 Pygame / iOS / 其他前端复用。
 """
+from __future__ import annotations
+
+from typing import List
 from .constants import (
     TARGET_SURVIVAL_TIME,
     BULLET_MAX_ON_SCREEN,
@@ -21,7 +24,7 @@ class Game:
         self.state = GameState.MENU
         self.elapsed_time: float = 0.0
         self.player: Player = Player.at_screen_center()
-        self.bullets: list[Bullet] = []
+        self.bullets: List[Bullet] = []
         self._spawn_timer: float = 0.0
 
     # ==================== 状态转换 ====================
