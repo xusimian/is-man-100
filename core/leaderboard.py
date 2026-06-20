@@ -89,7 +89,13 @@ class Leaderboard:
         return 0
 
     def is_high_score(self, survival_time: float) -> bool:
-        """判断某个分数是否值得上榜"""
+        """判断某个分数是否值得上榜
+
+        0 秒（即时死亡）不视为上榜分数，避免空榜时玩家还没开始就被
+        提示输入名字。
+        """
+        if survival_time <= 0.0:
+            return False
         if len(self.entries) < MAX_ENTRIES:
             return True
         return survival_time > self.entries[-1]["time"]

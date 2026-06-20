@@ -16,6 +16,8 @@ App Store 合规：
 from __future__ import annotations
 
 import sys
+import logging
+from pathlib import Path
 from typing import Optional, List, Tuple
 
 import pygame
@@ -27,6 +29,7 @@ from core.constants import (
     SCREEN_HEIGHT,
     PLAYER_COLOR,
     BULLET_COLOR,
+    BULLET_OUTLINE_COLOR,
 )
 from core.leaderboard import Leaderboard
 
@@ -36,30 +39,141 @@ from core.leaderboard import Leaderboard
 FPS = 60
 WINDOW_TITLE = "是男人就100"
 
-# 中文字体（多级 fallback）
-# 优先级：开源免费字体 → macOS 系统字体（仅本地调试用，不打包到 App Store）
-# 上架 App Store 时建议使用开源字体（如思源黑体 Noto Sans CJK）
-PREFERRED_FONTS = [
-    # 1. 开源免费字体（推荐，App Store 友好）
-    "/Library/Fonts/NotoSansCJK-Regular.ttc",      # Noto Sans CJK（开源）
-    "/usr/local/share/fonts/SourceHanSansCN-Regular.otf",  # 思源黑体（开源）
-    "/opt/homebrew/share/fonts/SourceHanSansCN-Regular.otf",
-    # 2. 系统自带（仅本地开发用，注意：苹方在 App Store 应用中有版权问题）
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    "/System/Library/Fonts/STHeiti Medium.ttc",
+# 中文字体查找
+#
+# 设计原则（App Store 合规）：
+# - 不引用任何 Apple 授权字体（系统只读目录仅做无害扫描，不会用作 fallback）
+# - 递归扫描所有已知字体目录，用启发式判断是否真的支持 CJK
+# - 找不到就降级到 pygame 默认字体并打印 warning
+#
+# 不再维护硬编码 PREFERRED_FONTS：用户的 ~/Library/Fonts 会被 macOS 偶尔
+# 清空，硬编码路径会立刻失效；递归扫描 + 缓存才是稳定方案。
+
+# 字体搜索目录（按优先级扫描，存在性即可，不要求可读之外的能力）
+_FONT_SEARCH_DIRS: List[Path] = [
+    Path.home() / "Library" / "Fonts",               # 用户字体（最常变动）
+    Path("/Library/Fonts"),                           # 系统公共字体
+    Path("/System/Library/Fonts"),                    # 系统字体（只读，扫不到但无害）
+    Path("/usr/local/share/fonts"),                   # Intel Mac Homebrew
+    Path("/opt/homebrew/share/fonts"),                # Apple Silicon Homebrew
 ]
+
+# 文件名启发式关键词（命中即视为候选 CJK 字体）
+_CJK_FILENAME_KEYWORDS = (
+    "sourcehan",
+    "notosanscjk",
+    "notosanssc",
+    "notosanstc",
+    "wenquanyi",
+    "simhei",
+    "microsoftyahei",
+    "droidsansfallback",
+    "cjk",
+    "chinese",
+    "han",
+)
+
+# 用于渲染探测的已知 CJK 字符（中 = U+4E2D）
+_CJK_PROBE_CHAR = "中"
+
+
+# ==================== 中文字体查找 ====================
+
+_CHINESE_FONT_CACHE: Optional[str] = None
+
+
+def _font_supports_chinese(font_path: Path) -> bool:
+    """启发式判断一个字体文件是否支持中文。
+
+    命中条件（任一即可）：
+      1. 文件名包含已知 CJK 关键词（SourceHan / NotoSansCJK / SimHei 等）
+      2. 能被 pygame 打开，且渲染 "中" 字符得到的位图宽度 > 0
+
+    pygame.font.Font() 在遇到坏字体（Keyboard.ttf 等）时可能抛异常，
+    必须 try/except 兜住，否则一次扫描会让整个 UI 初始化失败。
+    """
+    name_lc = font_path.name.lower()
+    if any(kw in name_lc for kw in _CJK_FILENAME_KEYWORDS):
+        return True
+
+    # SDL_ttf 在 pygame.init() 之前调用 Font() 会返回无效对象；
+    # 调用方（如 GameUI）通常已经 init 过，但保险起见自检一下
+    if not pygame.get_init():
+        pygame.init()
+    if not pygame.font.get_init():
+        pygame.font.init()
+
+    try:
+        probe_font = pygame.font.Font(str(font_path), 24)
+    except Exception:
+        return False
+
+    try:
+        surface = probe_font.render(_CJK_PROBE_CHAR, True, (0, 0, 0))
+    except Exception:
+        return False
+    finally:
+        # Font 对象无显式 close，主动 del 让 pygame 立即释放 SDL 资源
+        # 注意：必须先读 surface.get_width() 再 del，否则 surface 会失效
+        pass
+
+    width = surface.get_width()
+    del probe_font
+    return width > 0
+
+
+def _iter_font_files(directory: Path):
+    """递归产出 directory 下所有 .otf/.ttf/.ttc 文件。"""
+    if not directory.exists() or not directory.is_dir():
+        return
+    try:
+        for entry in directory.rglob("*"):
+            if not entry.is_file():
+                continue
+            suffix = entry.suffix.lower()
+            if suffix in (".otf", ".ttf", ".ttc"):
+                yield entry
+    except (PermissionError, OSError):
+        # 部分 /System/Library/Fonts 子目录拒绝遍历，吞掉继续
+        return
 
 
 def find_chinese_font() -> str:
-    """找到第一个可用的中文字体"""
-    for path in PREFERRED_FONTS:
-        if os.path.exists(path):
-            return path
-    # 没有就降级到 pygame 默认
-    return pygame.font.get_default_font()
+    """找到第一个支持中文的字体文件。
 
+    策略：
+      1. 按 _FONT_SEARCH_DIRS 顺序递归扫描
+      2. 对每个 .otf/.ttf/.ttc 用 _font_supports_chinese() 判定
+      3. 第一个命中即返回；用模块级缓存避免每帧重扫
+      4. 全部目录都找不到时降级到 pygame 默认字体，并 logging.warning
 
-import os  # 在函数下方导入避免循环
+    绝不会引用任何 Apple 授权字体作为 fallback，
+    保持 App Store 合规（见 COMPLIANCE.md）。
+    """
+    global _CHINESE_FONT_CACHE
+    if _CHINESE_FONT_CACHE is not None:
+        return _CHINESE_FONT_CACHE
+
+    for directory in _FONT_SEARCH_DIRS:
+        for font_path in _iter_font_files(directory):
+            if _font_supports_chinese(font_path):
+                resolved = str(font_path)
+                _CHINESE_FONT_CACHE = resolved
+                return resolved
+
+    # 全部找不到 —— 降级到 pygame 默认字体（仅 Latin）
+    fallback = pygame.font.get_default_font()
+    msg = (
+        f"find_chinese_font: no CJK-capable font found in "
+        f"{[str(d) for d in _FONT_SEARCH_DIRS]}; "
+        f"falling back to pygame default ({fallback}). "
+        f"Chinese characters will not render correctly."
+    )
+    logging.warning(msg)
+    print(f"[WARN] {msg}", file=sys.stderr)
+    _CHINESE_FONT_CACHE = fallback
+    return fallback
+
 
 # 找到的字体路径（运行时决定）
 CHINESE_FONT = None  # 在 GameUI.__init__ 中通过 find_chinese_font() 设置
@@ -111,15 +225,15 @@ class GameUI:
         self.game = Game()
         self.leaderboard = Leaderboard()
 
-        # 找到可用的中文字体（多级 fallback，优先开源免费字体）
+        # 找到可用的中文字体（递归扫描 + 启发式判定，优先开源免费字体）
         # App Store 上架时建议把字体打包进 App，避免系统字体依赖
-        self._font_path = find_chinese_font()
-        self.font_display = pygame.font.Font(self._font_path, FONT_DISPLAY)
-        self.font_title = pygame.font.Font(self._font_path, FONT_TITLE)
-        self.font_countdown = pygame.font.Font(self._font_path, COUNTDOWN_FONT)
-        self.font_body = pygame.font.Font(self._font_path, FONT_BODY)
-        self.font_callout = pygame.font.Font(self._font_path, FONT_CALLOUT)
-        self.font_caption = pygame.font.Font(self._font_path, FONT_CAPTION)
+        self._chinese_font_path = find_chinese_font()
+        self.font_display = pygame.font.Font(self._chinese_font_path, FONT_DISPLAY)
+        self.font_title = pygame.font.Font(self._chinese_font_path, FONT_TITLE)
+        self.font_countdown = pygame.font.Font(self._chinese_font_path, COUNTDOWN_FONT)
+        self.font_body = pygame.font.Font(self._chinese_font_path, FONT_BODY)
+        self.font_callout = pygame.font.Font(self._chinese_font_path, FONT_CALLOUT)
+        self.font_caption = pygame.font.Font(self._chinese_font_path, FONT_CAPTION)
 
         self.dragging = False
 
@@ -215,8 +329,7 @@ class GameUI:
                 return
             # 其次：是否点了输入框（仅失败时上榜才显示）
             if (self._ui_state == "gameover"
-                    and self.leaderboard.is_high_score(self.game.survival_time)
-                    and self._submitted_rank is None
+                    and self._qualifies_for_name_input()
                     and self._hit_input_box(pos)):
                 self._enter_name_input()
                 return
@@ -240,6 +353,18 @@ class GameUI:
         box_rect = pygame.Rect(0, 0, SCREEN_WIDTH - 2 * PAD_XL, 56)
         box_rect.center = (SCREEN_WIDTH // 2, 470 + 28)  # y + box_h/2
         return box_rect.collidepoint(pos)
+
+    def _qualifies_for_name_input(self) -> bool:
+        """是否应允许进入"输入名字"流程
+
+        条件：分数 > 0 且分数值得上榜（且尚未提交过）。
+        0 分（即时死亡）不应弹出名字输入框。
+        """
+        if self._submitted_rank is not None:
+            return False
+        if self.game.survival_time <= 0.0:
+            return False
+        return bool(self.leaderboard.is_high_score(self.game.survival_time))
 
     # ==================== 状态转换 ====================
 
@@ -293,13 +418,25 @@ class GameUI:
 
     def _draw_game(self) -> None:
         """绘制游戏画面"""
-        # 子弹
+        # 子弹（白色填充 + 黑色细描边，深蓝背景下高对比度）
         for bullet in self.game.bullets:
-            color = BULLET_COLOR
+            # 终局（>80s）警告效果：让描边闪烁
+            outline_color = BULLET_OUTLINE_COLOR
             if self.game.elapsed_time > 80.0:
                 if int(self.game.elapsed_time * 2) % 2 == 0:
-                    color = (255, 200, 200)
-            pygame.draw.circle(self.screen, color, (int(bullet.x), int(bullet.y)), bullet.radius)
+                    outline_color = COLOR_RED  # 终局闪红边
+            # 描边先画（稍大）
+            pygame.draw.circle(
+                self.screen, outline_color,
+                (int(bullet.x), int(bullet.y)),
+                bullet.radius + 1,
+            )
+            # 主体白圆
+            pygame.draw.circle(
+                self.screen, BULLET_COLOR,
+                (int(bullet.x), int(bullet.y)),
+                bullet.radius,
+            )
 
         # 飞机
         self._draw_airplane(int(self.game.player.x), int(self.game.player.y))
@@ -495,7 +632,7 @@ class GameUI:
         self.screen.blit(time_surf, time_rect)
 
         # 上榜提示
-        if self.leaderboard.is_high_score(self.game.survival_time) and self._submitted_rank is None:
+        if self._qualifies_for_name_input():
             hint = self.font_body.render("新纪录！输入名字上榜", True, COLOR_GOLD)
             hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, 440))
             self.screen.blit(hint, hint_rect)

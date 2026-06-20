@@ -70,6 +70,18 @@ class TestLeaderboard(unittest.TestCase):
         self.assertTrue(self.lb.is_high_score(5.0))  # 比最低高
         self.assertTrue(self.lb.is_high_score(35.0))  # 比最高高
 
+    def test_zero_score_is_not_high_score(self):
+        """0 秒（即时死亡）不应被视为上榜分数
+
+        修复：之前空榜时 is_high_score(0.0) 会返回 True，导致游戏还没
+        开始就被提示输入名字。
+        """
+        # 空榜
+        self.assertFalse(self.lb.is_high_score(0.0))
+        # 有记录时 0 分也不应上榜
+        self.lb.add_entry("Alice", 50.0)
+        self.assertFalse(self.lb.is_high_score(0.0))
+
     def test_is_high_score_full(self):
         """5 个时，新分低于最低就不算高分"""
         for i in range(5):

@@ -18,8 +18,9 @@ PLAYER_COLOR = (255, 255, 255) # 白色
 
 # 子弹
 BULLET_RADIUS = 8
-BULLET_COLOR = (255, 107, 107)       # 浅红色
-BULLET_TRAIL_COLOR = (255, 107, 107, 80)  # 半透明拖尾
+BULLET_COLOR = (255, 255, 255)       # 白色（深蓝背景下高对比度）
+BULLET_OUTLINE_COLOR = (0, 0, 0)     # 黑色描边
+BULLET_TRAIL_COLOR = (255, 255, 255, 80)  # 半透明白色拖尾
 BULLET_MAX_ON_SCREEN = 100           # 同时存在最大数量
 
 # 难度参数（参考 DESIGN.md §3）
