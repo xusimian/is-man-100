@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深空渐变背景 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:startColor="#0C0A20"
+        android:centerColor="#121034"
+        android:endColor="#04040E"
+        android:angle="270" />
+</shape>

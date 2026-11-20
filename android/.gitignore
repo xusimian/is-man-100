@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Android SDK / IDE
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 签名文件（不要提交）
+*.jks
+*.keystore

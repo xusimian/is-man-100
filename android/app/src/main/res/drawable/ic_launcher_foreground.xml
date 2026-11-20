@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 前景：霓虹青飞船 + 辉光 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 外辉光 -->
+    <path
+        android:pathData="M54,30 L70,66 L54,60 L38,66 Z"
+        android:fillColor="#00E5FF"
+        android:fillAlpha="0.28" />
+
+    <!-- 飞船主体 -->
+    <path
+        android:pathData="M54,30 L70,66 L54,60 L38,66 Z"
+        android:fillColor="#00E5FF" />
+
+    <!-- 内层高光 -->
+    <path
+        android:pathData="M54,42 L61,60 L54,57 L47,60 Z"
+        android:fillColor="#EBF5FF" />
+</vector>
