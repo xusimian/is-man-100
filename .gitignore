@@ -18,10 +18,15 @@ android/local.properties
 android/.idea/
 android/*.iml
 android/app/src/main/res/mipmap-*/ic_launcher.png
-*.apk
-*.aab
 *.jks
 *.keystore
+
+# ⚠️ 注意：APK / AAB 故意不忽略 —— 仓库要能直接下载安装包。
+# 构建产物目录（android/app/build/）仍然忽略，避免把中间文件传上去。
+# 如果以后要发布新版本：
+#   1. cd android && ./gradlew assembleRelease
+#   2. cp android/app/build/outputs/apk/release/app-release.apk ../is-man-100-android-vX.Y.Z.apk
+#   3. git add is-man-100-android-vX.Y.Z.apk && git commit -m "release: Android vX.Y.Z"
 
 # 编辑器
 .vscode/
