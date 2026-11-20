@@ -10,6 +10,7 @@ from core.constants import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
     BULLET_MAX_ON_SCREEN,
+    TARGET_SURVIVAL_TIME,
 )
 
 
@@ -69,6 +70,30 @@ class TestGameUpdate(unittest.TestCase):
         game.elapsed_time = 99.95
         game.update(0.1)
         self.assertEqual(game.state, GameState.VICTORY)
+
+    def test_negative_dt_does_not_rewind_timer(self):
+        """负 dt 不应让计时器倒退
+
+        回归测试：之前 elapsed_time += dt 没有下限保护，
+        负值会让 progress 变负、remaining_time 超过 100。
+        """
+        game = Game()
+        game.start()
+        game.update(-5.0)
+        self.assertEqual(game.elapsed_time, 0.0)
+        self.assertEqual(game.progress, 0.0)
+        self.assertEqual(game.remaining_time, TARGET_SURVIVAL_TIME)
+
+    def test_logic_layer_executes_large_dt_verbatim(self):
+        """逻辑层应忠实执行传入的时间步（不钳制上限）
+
+        单帧卡顿的钳制属于渲染层职责（mac/ui.py），
+        逻辑层不能偷偷截断，否则时间流逝会和真实时钟脱节。
+        """
+        game = Game()
+        game.start()
+        game.update(0.5)
+        self.assertAlmostEqual(game.elapsed_time, 0.5)
 
 
 class TestPlayer(unittest.TestCase):

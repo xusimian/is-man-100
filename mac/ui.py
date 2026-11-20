@@ -29,6 +29,7 @@ from core.game_state import GameState
 from core.constants import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
+    MAX_FRAME_DT,
 )
 from core.leaderboard import Leaderboard
 from mac import visuals as V
@@ -177,6 +178,8 @@ class GameUI:
         self._name_input: str = ""
         self._cursor_timer: float = 0.0
         self._submitted_rank: Optional[int] = None
+        # 进入名字输入前的结算界面（gameover / victory），用于提交后正确返回
+        self._settle_state: Optional[str] = None
 
     # ==================== 主循环 ====================
 
@@ -184,7 +187,11 @@ class GameUI:
         """主循环"""
         running = True
         while running:
-            dt = self.clock.tick(FPS) / 1000.0
+            # ⚠️ dt 上限钳制：
+            #   窗口拖动 / 切后台 / 断点 会让 clock.tick() 返回很大的 dt，
+            #   一帧推进好几秒 → 子弹瞬间铺屏、直接判死。
+            #   钳制在渲染层（现实世界的帧循环），逻辑层不做上限限制。
+            dt = min(self.clock.tick(FPS) / 1000.0, MAX_FRAME_DT)
             self._time += dt
 
             for event in pygame.event.get():
@@ -300,6 +307,8 @@ class GameUI:
         self._flash = 0.0
 
     def _enter_name_input(self) -> None:
+        # 记住进入名字输入前所在的结算界面，提交后回到它
+        self._settle_state = self._ui_state if self._ui_state in ("gameover", "victory") else None
         self._ui_state = "name_input"
         self._name_input = ""
         self._cursor_timer = 0.0
@@ -308,7 +317,21 @@ class GameUI:
         name = "匿名" if anonymous else (self._name_input.strip() or "匿名")
         rank = self.leaderboard.add_entry(name, self.game.survival_time)
         self._submitted_rank = rank
-        self._ui_state = "gameover" if self.game.state == GameState.GAME_OVER else "victory"
+        # ⚠️ 不能用 game.state 判断回到哪个界面：
+        #    ESC 跳过名字输入时 game.state 可能仍是 PLAYING，
+        #    会被错判成 victory —— UI 显示“通关”但逻辑层还在游戏中。
+        #    改用“进入名字输入之前所在的结算界面”。
+        #    兜底也只允许 gameover / victory，绝不把 PLAYING 映射成胜利。
+        if self._settle_state in ("gameover", "victory"):
+            self._ui_state = self._settle_state
+        elif self.game.state == GameState.GAME_OVER:
+            self._ui_state = "gameover"
+        elif self.game.state == GameState.VICTORY:
+            self._ui_state = "victory"
+        else:
+            # 逻辑层还在游戏中（异常路径），回到游戏而不是伪报胜利
+            self._ui_state = "playing"
+        self._settle_state = None
         self._name_input = ""
 
     def _on_game_over(self) -> None:

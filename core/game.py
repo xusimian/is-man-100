@@ -53,6 +53,12 @@ class Game:
         if self.state != GameState.PLAYING:
             return
 
+        # ⚠️ dt 下限防护：
+        #   负值会让计时器倒退（progress 变负、remaining_time 超过 100）。
+        #   上限不在这里做 —— 逻辑层应忠实执行传入的时间步，
+        #   单帧卡顿的钳制属于渲染层职责（见 mac/ui.py）。
+        dt = max(dt, 0.0)
+
         self.elapsed_time += dt
 
         # 1. 子弹生成

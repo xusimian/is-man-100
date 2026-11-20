@@ -105,6 +105,25 @@ class TestLeaderboard(unittest.TestCase):
         self.lb.clear()
         self.assertEqual(len(self.lb), 0)
 
+    def test_rank_with_duplicate_name_and_time(self):
+        """同分同名时，名次应按加入顺序递增，而不是永远返回 1
+
+        回归测试：之前用 name+time+date 反查名次，同分同名会匹配到第一条。
+        """
+        self.assertEqual(self.lb.add_entry("A", 30.0), 1)
+        self.assertEqual(self.lb.add_entry("A", 30.0), 2)
+        self.assertEqual(self.lb.add_entry("A", 30.0), 3)
+        self.assertEqual(len(self.lb), 3)
+
+    def test_rank_with_duplicate_name_and_time_survives_reload(self):
+        """同分同名的记录持久化后仍应各自占据独立名次"""
+        for _ in range(3):
+            self.lb.add_entry("A", 30.0)
+        lb2 = Leaderboard(save_path=self.tmp_path)
+        self.assertEqual(len(lb2), 3)
+        # 再加一条同分同名，应排在第 4 名
+        self.assertEqual(lb2.add_entry("A", 30.0), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

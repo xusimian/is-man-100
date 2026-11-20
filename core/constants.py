@@ -48,3 +48,8 @@ COUNTDOWN_DECIMAL_PLACES = 1
 
 # 终局闪烁阈值（秒）
 LATE_GAME_THRESHOLD = 80.0
+
+# 单帧最大时间步长（秒）
+# 窗口拖动 / 切后台 / 断点 会让 clock.tick() 返回很大的 dt，
+# 一帧推进好几秒会导致子弹瞬间铺屏、直接判死。钳制上限避免误杀。
+MAX_FRAME_DT = 1.0 / 30.0

@@ -75,16 +75,16 @@ class Leaderboard:
         # 找到插入位置（按 time 倒序）
         self.entries.append(entry)
         # 按时间倒序
+        # ⚠️ 稳定排序 + 记录插入索引：同分记录必须保持「后加入的排在后面」，
+        #    否则用 name+time+date 反查名次会永远命中第一条同名同分记录。
         self.entries.sort(key=lambda e: e["time"], reverse=True)
         # 保留前 5
         self.entries = self.entries[:MAX_ENTRIES]
         self._save()
 
-        # 返回名次：用时间匹配（避免字典对象比较）
+        # 返回名次：用「对象身份」匹配，避免同分同名时匹配错记录
         for idx, e in enumerate(self.entries, start=1):
-            if (e["name"] == entry["name"]
-                    and e["time"] == entry["time"]
-                    and e["date"] == entry["date"]):
+            if e is entry:
                 return idx
         return 0
 
